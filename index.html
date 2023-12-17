@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-top: 50px;
+      background-color: #181818;
+      color: white;
+    }
+
+    #container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-top: 20px;
+    }
+
+    #title {
+      font-size: 24px;
+      margin-bottom: 20px;
+    }
+
+    textarea {
+      width: 800px;
+      height: 150px;
+      margin: 10px;
+      padding: 10px;
+      resize: none;
+      background-color: #333;
+      color: white;
+      border: 1px solid #555;
+      border-radius: 5px;
+    }
+
+    button {
+      margin-top: 10px;
+      padding: 10px;
+      cursor: pointer;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 5px;
+    }
+
+    #resultTextarea {
+      margin-top: 20px;
+      width: 800px;
+      height: 500px;
+      padding: 10px;
+      resize: none;
+      background-color: #333;
+      color: white;
+      border: 1px solid #555;
+      border-radius: 5px;
+    }
+
+    #link {
+      margin-top: 20px;
+      text-decoration: none;
+      color: #4CAF50;
+    }
+  </style>
+  <title>Formata INSERT</title>
+</head>
+<body>
+  <div id="container">
+    <div id="title">Formata INSERT</div>
+    <textarea id="sqlInput" placeholder="Insira o SQL aqui"></textarea>
+    <button onclick="formatarSQL()">Formatar SQL</button>
+    <button onclick="limpar()">Limpar</button>
+    <textarea id="resultTextarea" placeholder="SQL formatado aparecerá aqui" readonly></textarea>
+    <a href="https://github.com/boaglio/formata-insert" id="link" target="_blank">https://github.com/boaglio/formata-insert</a>
+  </div>
+
+  <script>
+    function formatarSQL() {
+      const inputTextArea = document.getElementById('sqlInput');
+      const resultTextArea = document.getElementById('resultTextarea');
+
+      const sql = inputTextArea.value.trim();
+      console.log('SQL Original:', sql);
+
+      const regex = /INSERT\s+INTO\s+(\w+)\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)/i;
+      console.log('Regex:', regex);
+      
+      const match = sql.match(regex);
+      console.log('Match:', match);
+
+      if (match) {
+        const tableName = match[1];
+        const columns = match[2].split(',').map(col => col.trim());
+        const values = match[3].split(',').map(val => val.trim());
+
+        console.log('Table Name:', tableName);
+        console.log('Columns:', columns);
+        console.log('Values:', values);
+
+        const formattedSql = columns.map((col, index) => `${col}: ${values[index]}`).join('\n');
+        console.log('Formatted SQL:', formattedSql);
+
+        resultTextArea.value = `INSERT INTO ${tableName}\n${formattedSql}`;
+      } else {
+        resultTextArea.value = 'Formato SQL inválido - válido: [INSERT INTO TABLE(COL1,COL2) VALUES (1,2)]';
+      }
+    }
+    function limpar() {
+      const inputTextArea = document.getElementById('sqlInput');
+      inputTextArea.value = '';
+    }
+    document.getElementById("sqlInput").focus();
+  </script>
+</body>
+</html>

@@ -3,6 +3,8 @@
 Formata SQL Insert
 
 
+![formata INSERT](/formata-insert.png "formata INSERT")
+
 
 Confira online:
 

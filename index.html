@@ -36,16 +36,31 @@
       color: white;
       border: 1px solid #555;
       border-radius: 5px;
+      font-family: 'Consolas', 'Menlo', monospace;
+    }
+
+    #buttonRow {
+      display: flex;
+      gap: 10px;
     }
 
     button {
-      margin-top: 10px;
-      padding: 10px;
+      padding: 10px 16px;
       cursor: pointer;
       background-color: #4CAF50;
       color: white;
       border: none;
       border-radius: 5px;
+    }
+
+    button.secondary {
+      background-color: #555;
+    }
+
+    button:disabled {
+      background-color: #3a3a3a;
+      color: #888;
+      cursor: not-allowed;
     }
 
     #resultTextarea {
@@ -58,6 +73,11 @@
       color: white;
       border: 1px solid #555;
       border-radius: 5px;
+      font-family: 'Consolas', 'Menlo', monospace;
+    }
+
+    #resultTextarea.hasError {
+      border-color: #d9534f;
     }
 
     #link {
@@ -71,49 +91,222 @@
 <body>
   <div id="container">
     <div id="title">Formata INSERT</div>
-    <textarea id="sqlInput" placeholder="Insira o SQL aqui"></textarea>
-    <button onclick="formatarSQL()">Formatar SQL</button>
-    <button onclick="limpar()">Limpar</button>
+    <textarea id="sqlInput" placeholder="Insira um ou mais SQL INSERT aqui (aceita múltiplas linhas, múltiplos INSERTs e múltiplas linhas de VALUES)"></textarea>
+    <div id="buttonRow">
+      <button onclick="formatarSQL()">Formatar SQL</button>
+      <button id="copyButton" class="secondary" onclick="copiarResultado()">Copiar resultado</button>
+      <button class="secondary" onclick="limpar()">Limpar</button>
+    </div>
     <textarea id="resultTextarea" placeholder="SQL formatado aparecerá aqui" readonly></textarea>
     <a href="https://github.com/boaglio/formata-insert" id="link" target="_blank">https://github.com/boaglio/formata-insert</a>
   </div>
 
   <script>
+    // --- Tokenization helpers -------------------------------------------------
+    // Skip over a quoted string/identifier (', ", `) starting at index i,
+    // honoring backslash escapes and doubled-quote escapes ('' or ``).
+    // Returns the index of the closing quote.
+    function skipQuoted(str, i, quoteChar) {
+      let j = i + 1;
+      while (j < str.length) {
+        if (str[j] === '\\') { j += 2; continue; }
+        if (str[j] === quoteChar) {
+          if (str[j + 1] === quoteChar) { j += 2; continue; }
+          return j;
+        }
+        j++;
+      }
+      return str.length - 1;
+    }
+
+    // Find the index of the ')' that matches the '(' at openIndex,
+    // ignoring parens that appear inside quoted strings.
+    function findMatchingParen(str, openIndex) {
+      let depth = 0;
+      let i = openIndex;
+      while (i < str.length) {
+        const ch = str[i];
+        if (ch === "'" || ch === '"' || ch === '`') {
+          i = skipQuoted(str, i, ch) + 1;
+          continue;
+        }
+        if (ch === '(') { depth++; i++; continue; }
+        if (ch === ')') { depth--; if (depth === 0) return i; i++; continue; }
+        i++;
+      }
+      return -1;
+    }
+
+    // Split str by `separator`, ignoring separators inside quoted strings
+    // or inside nested parentheses (e.g. NOW(), CONCAT(a,b), subqueries).
+    function splitTopLevel(str, separator) {
+      const result = [];
+      let depth = 0;
+      let current = '';
+      let i = 0;
+      while (i < str.length) {
+        const ch = str[i];
+        if (ch === "'" || ch === '"' || ch === '`') {
+          const end = skipQuoted(str, i, ch);
+          current += str.slice(i, end + 1);
+          i = end + 1;
+          continue;
+        }
+        if (ch === '(') { depth++; current += ch; i++; continue; }
+        if (ch === ')') { depth--; current += ch; i++; continue; }
+        if (ch === separator && depth === 0) {
+          result.push(current.trim());
+          current = '';
+          i++;
+          continue;
+        }
+        current += ch;
+        i++;
+      }
+      if (current.trim() !== '') result.push(current.trim());
+      return result;
+    }
+
+    function splitStatements(sql) {
+      return splitTopLevel(sql, ';').filter(s => s.trim() !== '');
+    }
+
+    // --- Parsing ---------------------------------------------------------------
+    // Parses a single "INSERT INTO table (cols) VALUES (...), (...), ..." statement.
+    // Supports an optional column list and multiple value tuples (multi-row insert).
+    function parseInsertStatement(stmt) {
+      const insertIntoMatch = stmt.match(/^\s*INSERT\s+INTO\s+/i);
+      if (!insertIntoMatch) {
+        return { error: 'não encontrei "INSERT INTO"' };
+      }
+      let idx = insertIntoMatch[0].length;
+
+      const tableMatch = stmt.slice(idx).match(/^([`"[]?[\w.]+[`"\]]?)/);
+      if (!tableMatch || tableMatch[1] === '') {
+        return { error: 'não encontrei o nome da tabela' };
+      }
+      const tableName = tableMatch[1];
+      idx += tableMatch[0].length;
+
+      while (idx < stmt.length && /\s/.test(stmt[idx])) idx++;
+
+      let columns = null;
+      if (stmt[idx] === '(') {
+        const closeIdx = findMatchingParen(stmt, idx);
+        if (closeIdx === -1) {
+          return { error: 'parênteses da lista de colunas não fecham' };
+        }
+        columns = splitTopLevel(stmt.slice(idx + 1, closeIdx), ',');
+        idx = closeIdx + 1;
+      }
+
+      while (idx < stmt.length && /\s/.test(stmt[idx])) idx++;
+
+      const valuesMatch = stmt.slice(idx).match(/^VALUES\s*/i);
+      if (!valuesMatch) {
+        return { error: 'não encontrei "VALUES"' };
+      }
+      idx += valuesMatch[0].length;
+
+      const rows = [];
+      while (true) {
+        while (idx < stmt.length && /\s/.test(stmt[idx])) idx++;
+        if (stmt[idx] !== '(') break;
+        const closeIdx = findMatchingParen(stmt, idx);
+        if (closeIdx === -1) {
+          return { error: 'parênteses de valores não fecham' };
+        }
+        rows.push(splitTopLevel(stmt.slice(idx + 1, closeIdx), ','));
+        idx = closeIdx + 1;
+        while (idx < stmt.length && /\s/.test(stmt[idx])) idx++;
+        if (stmt[idx] === ',') { idx++; continue; }
+        break;
+      }
+
+      if (rows.length === 0) {
+        return { error: 'não encontrei valores em VALUES(...)' };
+      }
+      if (columns && rows.some(row => row.length !== columns.length)) {
+        return { error: 'número de valores não bate com o número de colunas' };
+      }
+
+      return { tableName, columns, rows };
+    }
+
+    function formatParsedStatement(parsed) {
+      let out = `INSERT INTO ${parsed.tableName}\n`;
+      parsed.rows.forEach((row, rowIndex) => {
+        if (parsed.rows.length > 1) out += `-- Linha ${rowIndex + 1}\n`;
+        row.forEach((value, i) => {
+          const colName = parsed.columns ? parsed.columns[i] : `Coluna ${i + 1}`;
+          out += `${colName}: ${value}\n`;
+        });
+        if (parsed.rows.length > 1) out += '\n';
+      });
+      return out.trimEnd();
+    }
+
     function formatarSQL() {
       const inputTextArea = document.getElementById('sqlInput');
       const resultTextArea = document.getElementById('resultTextarea');
 
       const sql = inputTextArea.value.trim();
-      console.log('SQL Original:', sql);
-
-      const regex = /INSERT\s+INTO\s+(\w+)\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)/i;
-      console.log('Regex:', regex);
-      
-      const match = sql.match(regex);
-      console.log('Match:', match);
-
-      if (match) {
-        const tableName = match[1];
-        const columns = match[2].split(',').map(col => col.trim());
-        const values = match[3].split(',').map(val => val.trim());
-
-        console.log('Table Name:', tableName);
-        console.log('Columns:', columns);
-        console.log('Values:', values);
-
-        const formattedSql = columns.map((col, index) => `${col}: ${values[index]}`).join('\n');
-        console.log('Formatted SQL:', formattedSql);
-
-        resultTextArea.value = `INSERT INTO ${tableName}\n${formattedSql}`;
-      } else {
-        resultTextArea.value = 'Formato SQL inválido - válido: [INSERT INTO TABLE(COL1,COL2) VALUES (1,2)]';
+      if (!sql) {
+        resultTextArea.value = '';
+        resultTextArea.classList.remove('hasError');
+        return;
       }
+
+      const statements = splitStatements(sql);
+      if (statements.length === 0) {
+        resultTextArea.value = 'Formato SQL inválido - válido: INSERT INTO TABELA (COL1, COL2) VALUES (1, 2)';
+        resultTextArea.classList.add('hasError');
+        return;
+      }
+
+      let hasError = false;
+      const blocks = statements.map((stmt, i) => {
+        const parsed = parseInsertStatement(stmt);
+        const label = statements.length > 1 ? `-- Statement ${i + 1}\n` : '';
+        if (parsed.error) {
+          hasError = true;
+          return `${label}-- ERRO: ${parsed.error}\n-- SQL: ${stmt.trim()}`;
+        }
+        return label + formatParsedStatement(parsed);
+      });
+
+      resultTextArea.value = blocks.join('\n\n');
+      resultTextArea.classList.toggle('hasError', hasError);
     }
+
+    function copiarResultado() {
+      const resultTextArea = document.getElementById('resultTextarea');
+      const copyButton = document.getElementById('copyButton');
+      if (!resultTextArea.value) return;
+
+      navigator.clipboard.writeText(resultTextArea.value).then(() => {
+        const original = copyButton.textContent;
+        copyButton.textContent = 'Copiado!';
+        setTimeout(() => { copyButton.textContent = original; }, 1500);
+      });
+    }
+
     function limpar() {
       const inputTextArea = document.getElementById('sqlInput');
+      const resultTextArea = document.getElementById('resultTextarea');
       inputTextArea.value = '';
+      resultTextArea.value = '';
+      resultTextArea.classList.remove('hasError');
+      inputTextArea.focus();
     }
-    document.getElementById("sqlInput").focus();
+
+    let debounceTimer;
+    document.getElementById('sqlInput').addEventListener('input', () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(formatarSQL, 400);
+    });
+
+    document.getElementById('sqlInput').focus();
   </script>
 </body>
 </html>

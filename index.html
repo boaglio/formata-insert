@@ -44,6 +44,21 @@
       gap: 10px;
     }
 
+    #formatRow {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-top: 10px;
+      font-size: 14px;
+    }
+
+    #formatRow label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+
     button {
       padding: 10px 16px;
       cursor: pointer;
@@ -92,9 +107,15 @@
   <div id="container">
     <div id="title">Formata INSERT</div>
     <textarea id="sqlInput" placeholder="Insira um ou mais SQL INSERT aqui (aceita múltiplas linhas, múltiplos INSERTs e múltiplas linhas de VALUES)"></textarea>
+    <div id="formatRow">
+      <span>Formato:</span>
+      <label><input type="radio" name="outputFormat" value="sql" checked> SQL formatado</label>
+      <label><input type="radio" name="outputFormat" value="columnValue"> Coluna: valor</label>
+    </div>
     <div id="buttonRow">
       <button onclick="formatarSQL()">Formatar SQL</button>
       <button id="copyButton" class="secondary" onclick="copiarResultado()">Copiar resultado</button>
+      <button class="secondary" onclick="carregarExemplo()">Carregar exemplo</button>
       <button class="secondary" onclick="limpar()">Limpar</button>
     </div>
     <textarea id="resultTextarea" placeholder="SQL formatado aparecerá aqui" readonly></textarea>
@@ -233,7 +254,9 @@
       return { tableName, columns, rows };
     }
 
-    function formatParsedStatement(parsed) {
+    // Pretty-printed, still-valid SQL: one column/value per line for a
+    // single row, one compact row per line for multi-row inserts.
+    function formatAsSql(parsed) {
       let out = `INSERT INTO ${parsed.tableName}`;
 
       if (parsed.columns) {
@@ -248,6 +271,21 @@
       }
 
       return out + ';';
+    }
+
+    // Debug-style listing: one "coluna: valor" line per value, no longer
+    // valid SQL but handy for eyeballing which value maps to which column.
+    function formatAsColumnValue(parsed) {
+      let out = `INSERT INTO ${parsed.tableName}\n`;
+      parsed.rows.forEach((row, rowIndex) => {
+        if (parsed.rows.length > 1) out += `-- Linha ${rowIndex + 1}\n`;
+        row.forEach((value, i) => {
+          const colName = parsed.columns ? parsed.columns[i] : `Coluna ${i + 1}`;
+          out += `${colName}: ${value}\n`;
+        });
+        if (parsed.rows.length > 1) out += '\n';
+      });
+      return out.trimEnd();
     }
 
     function formatarSQL() {
@@ -268,6 +306,9 @@
         return;
       }
 
+      const format = document.querySelector('input[name="outputFormat"]:checked').value;
+      const formatFn = format === 'columnValue' ? formatAsColumnValue : formatAsSql;
+
       let hasError = false;
       const blocks = statements.map((stmt, i) => {
         const parsed = parseInsertStatement(stmt);
@@ -276,7 +317,7 @@
           hasError = true;
           return `${label}-- ERRO: ${parsed.error}\n-- SQL: ${stmt.trim()}`;
         }
-        return label + formatParsedStatement(parsed);
+        return label + formatFn(parsed);
       });
 
       resultTextArea.value = blocks.join('\n\n');
@@ -295,6 +336,21 @@
       });
     }
 
+    function carregarExemplo() {
+      const exemplo = `INSERT INTO clientes (id, nome, email, cidade, criado_em) VALUES
+  (1, 'Maria Silva', 'maria@email.com', 'São Paulo', NOW()),
+  (2, 'João Souza, Jr.', 'joao@email.com', 'Rio de Janeiro', NOW()),
+  (3, 'Ana O''Brien', 'ana@email.com', 'Curitiba', NOW());
+
+INSERT INTO pedidos (id, cliente_id, produto, valor, status) VALUES
+  (101, 1, 'Notebook', 3499.90, 'pago'),
+  (102, 2, 'Mouse sem fio', 89.90, 'pendente'),
+  (103, 3, CONCAT('Teclado', ' mecânico'), 249.50, 'pago');`;
+
+      document.getElementById('sqlInput').value = exemplo;
+      formatarSQL();
+    }
+
     function limpar() {
       const inputTextArea = document.getElementById('sqlInput');
       const resultTextArea = document.getElementById('resultTextarea');
@@ -308,6 +364,10 @@
     document.getElementById('sqlInput').addEventListener('input', () => {
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(formatarSQL, 400);
+    });
+
+    document.querySelectorAll('input[name="outputFormat"]').forEach(radio => {
+      radio.addEventListener('change', formatarSQL);
     });
 
     document.getElementById('sqlInput').focus();

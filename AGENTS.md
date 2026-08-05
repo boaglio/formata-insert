@@ -29,12 +29,16 @@ The core logic is a small hand-written tokenizer, not a single regex:
   on top-level `;`.
 - `parseInsertStatement` — parses one statement: table name, optional
   column list, and one or more `VALUES (...)` tuples (multi-row insert).
-- `formatParsedStatement` — turns a parsed statement back into
-  pretty-printed, valid SQL (columns and, for single-row inserts,
-  values each on their own line; multi-row inserts keep one row per
-  line).
-- `formatarSQL` / `copiarResultado` / `limpar` — DOM glue (button
-  handlers) plus a debounced `input` listener for auto-formatting.
+- `formatAsSql` — turns a parsed statement back into pretty-printed,
+  valid SQL (columns and, for single-row inserts, values each on their
+  own line; multi-row inserts keep one row per line).
+- `formatAsColumnValue` — the original "coluna: valor" debug listing
+  (no longer valid SQL, but easier to eyeball field-by-field).
+- `formatarSQL` picks between the two via the `outputFormat` radio
+  group (`input[name="outputFormat"]:checked`).
+- `formatarSQL` / `copiarResultado` / `limpar` / `carregarExemplo` —
+  DOM glue (button handlers) plus a debounced `input` listener and a
+  radio `change` listener for auto-formatting.
 
 When touching the parser, preserve support for: commas/parens inside
 quoted strings, escaped quotes (`''`), nested function calls in values
@@ -46,9 +50,9 @@ multiple statements separated by `;`.
 There is no test suite or CI test step. To verify parser changes without
 a browser, extract the `<script>` contents from `index.html` and `eval`
 them in Node — the parsing functions (`splitStatements`,
-`parseInsertStatement`, `formatParsedStatement`) have no DOM dependency,
-only `formatarSQL`/`copiarResultado`/`limpar` touch `document`. Example
-harness:
+`parseInsertStatement`, `formatAsSql`, `formatAsColumnValue`) have no
+DOM dependency, only `formatarSQL`/`copiarResultado`/`limpar`/
+`carregarExemplo` touch `document`. Example harness:
 
 ```js
 const fs = require('fs');

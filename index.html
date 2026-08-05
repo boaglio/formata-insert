@@ -100,10 +100,40 @@
       text-decoration: none;
       color: #4CAF50;
     }
+
+    .github-fork-ribbon {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 200px;
+      height: 200px;
+      overflow: hidden;
+      z-index: 1000;
+      pointer-events: none;
+    }
+
+    .github-fork-ribbon span {
+      position: absolute;
+      top: 42px;
+      right: -58px;
+      width: 260px;
+      padding: 8px 0;
+      background-color: #4CAF50;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+      color: white;
+      font: 700 14px 'Arial', sans-serif;
+      text-align: center;
+      text-decoration: none;
+      transform: rotate(45deg);
+      pointer-events: auto;
+    }
   </style>
   <title>Formata INSERT</title>
 </head>
 <body>
+  <a href="https://github.com/boaglio/formata-insert" class="github-fork-ribbon" target="_blank" rel="noopener" aria-label="Fork me on GitHub">
+    <span>Fork me on GitHub</span>
+  </a>
   <div id="container">
     <div id="title">Formata INSERT</div>
     <textarea id="sqlInput" placeholder="Insira um ou mais SQL INSERT aqui (aceita múltiplas linhas, múltiplos INSERTs e múltiplas linhas de VALUES)"></textarea>

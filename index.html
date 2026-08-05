@@ -234,16 +234,20 @@
     }
 
     function formatParsedStatement(parsed) {
-      let out = `INSERT INTO ${parsed.tableName}\n`;
-      parsed.rows.forEach((row, rowIndex) => {
-        if (parsed.rows.length > 1) out += `-- Linha ${rowIndex + 1}\n`;
-        row.forEach((value, i) => {
-          const colName = parsed.columns ? parsed.columns[i] : `Coluna ${i + 1}`;
-          out += `${colName}: ${value}\n`;
-        });
-        if (parsed.rows.length > 1) out += '\n';
-      });
-      return out.trimEnd();
+      let out = `INSERT INTO ${parsed.tableName}`;
+
+      if (parsed.columns) {
+        out += ' (\n' + parsed.columns.map(c => `  ${c}`).join(',\n') + '\n)';
+      }
+
+      out += ' VALUES';
+      if (parsed.rows.length === 1) {
+        out += ' (\n' + parsed.rows[0].map(v => `  ${v}`).join(',\n') + '\n)';
+      } else {
+        out += '\n' + parsed.rows.map(row => `  (${row.join(', ')})`).join(',\n');
+      }
+
+      return out + ';';
     }
 
     function formatarSQL() {

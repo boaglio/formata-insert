@@ -305,13 +305,22 @@
 
     // Debug-style listing: one "coluna: valor" line per value, no longer
     // valid SQL but handy for eyeballing which value maps to which column.
+    // Lines are numbered, and both the number and the column name are
+    // padded so the ":" lines up in the same column on every line.
     function formatAsColumnValue(parsed) {
+      const colNames = parsed.columns
+        ? parsed.columns
+        : parsed.rows[0].map((_, i) => `Coluna ${i + 1}`);
+      const maxLen = Math.max(...colNames.map(c => c.length));
+      const numLen = String(colNames.length).length;
+
       let out = `INSERT INTO ${parsed.tableName}\n`;
       parsed.rows.forEach((row, rowIndex) => {
         if (parsed.rows.length > 1) out += `-- Linha ${rowIndex + 1}\n`;
         row.forEach((value, i) => {
-          const colName = parsed.columns ? parsed.columns[i] : `Coluna ${i + 1}`;
-          out += `${colName}: ${value}\n`;
+          const colName = colNames[i];
+          const num = String(i + 1).padStart(numLen);
+          out += `# ${num} > ${colName.padEnd(maxLen)}: ${value}\n`;
         });
         if (parsed.rows.length > 1) out += '\n';
       });
